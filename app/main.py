@@ -7,12 +7,20 @@ from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+import json
 
 # Load environment variables
 load_dotenv()
 
+# Extract Firebase credentials from environment variables
+firebase_creds_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+if not firebase_creds_json:
+    raise ValueError("FIREBASE_SERVICE_ACCOUNT environment variable is not set")
+
+firebase_creds = json.loads(firebase_creds_json)
+
 # Initialize Firebase
-cred = credentials.Certificate("firebase_service_account.json")
+cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
@@ -87,3 +95,8 @@ async def generate_notes(request: NotesRequest):
 async def fetch_notes(subject: str, topic: str):
     notes = check_existing_notes(subject, topic)
     return {"subject": subject, "main_topic": topic, "notes": notes or "No notes available"}
+
+# Cloud Run needs to run on port 8080
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
