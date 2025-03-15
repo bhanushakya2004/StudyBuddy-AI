@@ -1,6 +1,4 @@
-Here’s a **README.md** file for your project:  
 
----
 
 # **StudyBuddy AI - AI-Powered Notes Generator** 📚🤖  
 
