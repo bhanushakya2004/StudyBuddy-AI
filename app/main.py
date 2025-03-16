@@ -18,8 +18,11 @@ firebase_creds_base64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64")
 if not firebase_creds_base64:
     raise ValueError("FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable is not set")
 
-firebase_creds_json = base64.b64decode(firebase_creds_base64).decode('utf-8')
-firebase_creds = json.loads(firebase_creds_json)
+try:
+    firebase_creds_json = base64.b64decode(firebase_creds_base64).decode('utf-8')
+    firebase_creds = json.loads(firebase_creds_json)
+except Exception as e:
+    raise ValueError(f"Error decoding FIREBASE_SERVICE_ACCOUNT_BASE64: {e}")
 
 # Initialize Firebase
 cred = credentials.Certificate(firebase_creds)
@@ -83,7 +86,8 @@ async def generate_notes(request: NotesRequest):
                 "role": "user",
                 "content": f"Generate detailed notes on {request.main_topic}. "
                            f"Focus on: {request.sub_topic}. Additional details: {request.additional_details}."
-            }]
+            }],
+            temperature=0.7  # Optional: Adjust creativity
         )
 
         # Extract and clean AI response
@@ -94,6 +98,7 @@ async def generate_notes(request: NotesRequest):
         return {"subject": request.subject, "main_topic": request.main_topic, "notes": notes}
 
     except Exception as e:
+        print(f"Error generating notes: {e}")  # Debugging logs
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 # API to fetch notes from Firebase
@@ -105,4 +110,5 @@ async def fetch_notes(subject: str, topic: str):
 # Run FastAPI on Cloud Run-compatible port 8080
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+    port = int(os.getenv("PORT", 8080))  # Ensure correct Cloud Run port
+    uvicorn.run(app, host="0.0.0.0", port=port)
