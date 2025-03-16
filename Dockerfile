@@ -1,23 +1,24 @@
 # Use an official lightweight Python image
 FROM python:3.10-slim
 
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1 \
+    PORT=8080
+
 # Set the working directory
 WORKDIR /app
 
-# Copy only requirements file first (to leverage Docker caching)
+# Install dependencies in a virtual environment (smaller image size)
 COPY requirements.txt .
-
-# Install dependencies (optimize cache layers)
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire project to the container
 COPY . .
 
-# Set environment variable for Cloud Run
-ENV PORT=8080
-
 # Expose the required port
 EXPOSE 8080
 
-# Run FastAPI with Uvicorn
+# Run FastAPI with Uvicorn using multiple workers (better concurrency)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
