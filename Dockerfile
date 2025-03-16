@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
 # Set the working directory
 WORKDIR /app
 
-# Install dependencies in a virtual environment (smaller image size)
+# Install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
@@ -21,4 +21,4 @@ COPY . .
 EXPOSE 8080
 
 # Run FastAPI with Uvicorn using multiple workers (better concurrency)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
