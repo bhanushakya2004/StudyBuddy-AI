@@ -1,5 +1,7 @@
 import os
 import re
+import json
+import base64
 import firebase_admin
 from firebase_admin import credentials, firestore
 from fastapi import FastAPI, HTTPException
@@ -7,16 +9,16 @@ from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-import json
 
 # Load environment variables
 load_dotenv()
 
-# Extract Firebase credentials from environment variables
-firebase_creds_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
-if not firebase_creds_json:
-    raise ValueError("FIREBASE_SERVICE_ACCOUNT environment variable is not set")
+# Decode and load Firebase credentials from base64 environment variable
+firebase_creds_base64 = os.getenv("FIREBASE_SERVICE_ACCOUNT_BASE64")
+if not firebase_creds_base64:
+    raise ValueError("FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable is not set")
 
+firebase_creds_json = base64.b64decode(firebase_creds_base64).decode('utf-8')
 firebase_creds = json.loads(firebase_creds_json)
 
 # Initialize Firebase
@@ -24,7 +26,7 @@ cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# Initialize OpenAI Client
+# Initialize OpenAI Client (OpenRouter)
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY"),
@@ -33,27 +35,27 @@ client = OpenAI(
 # Initialize FastAPI app
 app = FastAPI()
 
-# Enable CORS for testing in ThunderClient/Postman
+# Enable CORS for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins (Adjust for production)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Define request model
+# Define request model for generating notes
 class NotesRequest(BaseModel):
     subject: str
     main_topic: str
     sub_topic: str
     additional_details: str
 
-# Function to clean AI response
+# Function to clean AI response (removes Markdown symbols)
 def clean_text(text):
-    return re.sub(r"\*+", "", text).strip()  # Remove *, ** symbols
+    return re.sub(r"\*+", "", text).strip()
 
-# Function to fetch existing notes from Firebase
+# Function to check if notes already exist in Firestore
 def check_existing_notes(subject, topic):
     doc_ref = db.collection("Library").document(subject)
     doc = doc_ref.get()
@@ -61,42 +63,46 @@ def check_existing_notes(subject, topic):
         return doc.to_dict().get(f"{topic}_notes")
     return None
 
-# Function to store AI-generated notes in Firebase
+# Function to store AI-generated notes in Firestore
 def store_notes_in_firebase(subject, topic, notes):
     db.collection("Library").document(subject).set({f"{topic}_notes": notes}, merge=True)
 
-# AI Notes Generation API
+# API to generate notes using AI and store in Firebase
 @app.post("/generate_notes")
 async def generate_notes(request: NotesRequest):
-    # Check if notes exist
+    # Check for cached notes
     existing_notes = check_existing_notes(request.subject, request.main_topic)
     if existing_notes:
         return {"subject": request.subject, "main_topic": request.main_topic, "notes": existing_notes}
 
     try:
-        # Call AI model to generate notes
+        # AI request for notes generation
         completion = client.chat.completions.create(
             model="google/gemma-3-1b-it:free",
-            messages=[{"role": "user", "content": f"Generate detailed notes on {request.main_topic}. Focus on: {request.sub_topic}. Additional details: {request.additional_details}."}]
+            messages=[{
+                "role": "user",
+                "content": f"Generate detailed notes on {request.main_topic}. "
+                           f"Focus on: {request.sub_topic}. Additional details: {request.additional_details}."
+            }]
         )
 
-        # Extract and clean response
+        # Extract and clean AI response
         notes = clean_text(completion.choices[0].message.content)
-        
-        # Store in Firebase
+
+        # Store notes in Firebase
         store_notes_in_firebase(request.subject, request.main_topic, notes)
         return {"subject": request.subject, "main_topic": request.main_topic, "notes": notes}
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
-# Fetch API for Notes
+# API to fetch notes from Firebase
 @app.get("/fetch_notes")
 async def fetch_notes(subject: str, topic: str):
     notes = check_existing_notes(subject, topic)
     return {"subject": subject, "main_topic": topic, "notes": notes or "No notes available"}
 
-# Cloud Run needs to run on port 8080
+# Run FastAPI on Cloud Run-compatible port 8080
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
