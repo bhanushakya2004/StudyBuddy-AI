@@ -19,14 +19,16 @@ if not firebase_creds_base64:
     raise ValueError("FIREBASE_SERVICE_ACCOUNT_BASE64 environment variable is not set")
 
 try:
-    firebase_creds_json = base64.b64decode(firebase_creds_base64).decode('utf-8')
+    firebase_creds_json = base64.b64decode(firebase_creds_base64).decode("utf-8")
     firebase_creds = json.loads(firebase_creds_json)
 except Exception as e:
     raise ValueError(f"Error decoding FIREBASE_SERVICE_ACCOUNT_BASE64: {e}")
 
-# Initialize Firebase
-cred = credentials.Certificate(firebase_creds)
-firebase_admin.initialize_app(cred)
+# Initialize Firebase only if not already initialized
+if not firebase_admin._apps:
+    cred = credentials.Certificate(firebase_creds)
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 # Initialize OpenAI Client (OpenRouter)
@@ -63,7 +65,7 @@ def check_existing_notes(subject, topic):
     doc_ref = db.collection("Library").document(subject)
     doc = doc_ref.get()
     if doc.exists:
-        return doc.to_dict().get(f"{topic}_notes")
+        return doc.to_dict().get(f"{topic}_notes", None)  # Fix: Use `.get(field, None)`
     return None
 
 # Function to store AI-generated notes in Firestore
@@ -89,6 +91,10 @@ async def generate_notes(request: NotesRequest):
             }],
             temperature=0.7  # Optional: Adjust creativity
         )
+
+        # Validate AI response before accessing choices
+        if not completion or not completion.choices or not completion.choices[0].message:
+            raise HTTPException(status_code=500, detail="AI response invalid or empty")
 
         # Extract and clean AI response
         notes = clean_text(completion.choices[0].message.content)
