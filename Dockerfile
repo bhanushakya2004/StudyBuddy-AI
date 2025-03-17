@@ -57,4 +57,4 @@ RUN ls -l $WORKDIR
 EXPOSE 8080
 
 # Set default command to run FastAPI app with Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
